@@ -63,7 +63,7 @@ void set_physical_mem() {
 
 }
 
-void * translate(unsigned int vp){
+void * translate(unsigned int page_directory, unsigned int vp){
     //TODO: Finish
 	unsigned long off_mask = (1 << offset_size);
 	off_mask -= 1;
@@ -96,7 +96,7 @@ void * translate(unsigned int vp){
 	int bit = get_bit(virtual_m, idx);
 	if (bit != 1)
 		return NULL;
-	page_directory = physical_mem + physical_page_address - 1;
+	
 	unsigned long *pd_entry = page_directory + outer_idx;
 
 	unsigned long ipt_address = (unsigned long)&physical_mem[*pd_entry];
@@ -109,14 +109,55 @@ void * translate(unsigned int vp){
 	return;
 }
 
-unsigned int page_map(unsigned int vp){
+unsigned int page_map(unsigned int page_directory, unsigned int vp, unsigned int pa){
     //TODO: Finish
 	unsigned long off_mask = (1 << offset_size);
 	off_mask -= 1;
 	unsigned long offset = vp & off_mask;
 
-	
+	unsigned long phy_page_num = pa >> offset_size;
+	unsigned long virt_page_num = vp >> offset_size;
 
+
+	int check = check_TLB(vp);
+	++tlb_lookups;
+	if (check == phy_page_num)
+	{
+		return 0;
+	}
+	++tlb_miss;
+
+	// get the outer and then the inner index
+	unsigned int num_bits = (32 - outer_bits);
+	unsigned long outer_idx = vp >> num_bits;
+
+	unsigned long in_bit_msk = 1 << inner_bits;
+	in_bit_msk -= 1;
+	unsigned long inner_idx = vpn & in_bit_msk;
+
+	unsigned int pd_entry = page_directory + outer_idx;
+	if (pd_entry == -1)
+	{
+		int last_page = phy_page_num - 1;
+		while (last_page >= 0)
+		{
+			int bit = get_bit(physical, last_page);
+			if (bit == 0)
+			{
+				set_bit(physical, last_page);
+				pd_entry = last_page;
+				break;
+			}
+
+			--last_page;
+		}
+	}
+
+	unsigned int inner_pt_add = (unsigned int)&physical_mem[pd_entry];
+	unsigned int *pt_entry = phy_page_num;
+
+	add_TLB(vpn, phy_page_num);
+	return 1;
 }
 
 void * t_malloc(size_t n){
@@ -178,7 +219,7 @@ void * t_malloc(size_t n){
 		set_bit(virtual_m,i);
 		set_bit(physical,physical_memory_pages[count]);
 		count ++;
-		page_map((unsigned int)v_temp);
+		page_map((unsigned int)(physical_mem + physical_page_number - 1), (unsigned int)v_temp, (unsigned int)p_temp);
 
 		//virtual address
 		unsigned long virtual_address = start << offset_size;
@@ -238,7 +279,7 @@ int t_free(unsigned int vp, size_t n){
 int put_value(unsigned int vp, void *val, size_t n){
     //TODO: Finish
 	char *value = (char*) val;
-	unsigned long phys_ad = (unsigned long)(translate(vp));
+	unsigned long phys_ad = (unsigned long)(translate((unsigned int)(physical_mem + physical_page_number - 1), vp));
 	char *pa = (char *)phys_ad;
 	char *va = (char *)vp;
 	char *lva = va + n;
@@ -269,7 +310,7 @@ int put_value(unsigned int vp, void *val, size_t n){
 
 		if(o ==0)
 		{
-			phys_ad = (unsigned long)(translate(va));
+			phys_ad = (unsigned long)(translate((unsigned int)(physical_mem + physical_page_number - 1), vp));
 			pa = (char *)phys_ad;
 		}
 	}
@@ -278,7 +319,7 @@ int put_value(unsigned int vp, void *val, size_t n){
 int get_value(unsigned int vp, void *dst, size_t n){
     //TODO: Finish
 	char *value = (char*) dst;
-	unsigned long phys_ad = (unsigned long)(translate(vp));
+	unsigned long phys_ad = (unsigned long)(translate((unsigned int)(physical_mem + physical_page_number - 1), vp));
 	char *pa = (char *)phys_ad;
 	char *va = (char *)vp;
 	char *lva = va + n;
@@ -309,7 +350,7 @@ int get_value(unsigned int vp, void *dst, size_t n){
 
 		if(o ==0)
 		{
-			phys_ad = (unsigned long)(translate(va));
+			phys_ad = (unsigned long)(translate((unsigned int)(physical_mem + physical_page_number - 1), va));
 		}
 	}
 
