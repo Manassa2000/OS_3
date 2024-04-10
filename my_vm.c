@@ -52,6 +52,15 @@ void set_physical_mem() {
         virtual_m[i] = NULL;
 	}
 
+	int idx = physical_page_number -1;
+	set_bit(physical,idx);
+	struct page *p = &physical_mem[idx];
+	unsigned long *l = p ->arr;
+	for(int i=0;i<(1 << outer_bits);i++)
+	{
+		l[i]=-1;
+	}
+
 }
 
 void * translate(unsigned int vp){
@@ -106,6 +115,8 @@ unsigned int page_map(unsigned int vp){
 	off_mask -= 1;
 	unsigned long offset = vp & off_mask;
 
+	
+
 }
 
 void * t_malloc(size_t n){
@@ -146,7 +157,7 @@ void * t_malloc(size_t n){
 	}
 
 	//Need to find corresponding page in virtual memory
-	int start = available(pages);
+	int start = get_next_avail(pages);
 
 	//reach here if failed
 	if(start == -1)
@@ -332,7 +343,7 @@ void print_TLB_missrate(){
 	printf("TLB Miss Rate : %f \n", rate);
 }
 
-static void set_bitchar (void *bitmap, int idx)
+static void set_bit (void *bitmap, int idx)
 {
     // Calculate the starting location where index is present
     char *location = ((char *) bitmap) + (idx / 8);
@@ -359,7 +370,7 @@ static void reset_bit(char *bitmap, int idx)
     return;
 }
 
-unsigned long available(int pages) {
+unsigned long get_next_avail(int pages) {
  
     //Use virtual address bitmap to find the next free page
 
