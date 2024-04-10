@@ -77,22 +77,202 @@ void * translate(unsigned int vp){
 
 unsigned int page_map(unsigned int vp){
     //TODO: Finish
+	unsigned long off_mask = (1 << offset_size);
+	off_mask -= 1;
+	unsigned long offset = vp & off_mask;
+
 }
 
 void * t_malloc(size_t n){
     //TODO: Finish
+	//pthread_mutex_lock(&mutex);
+	if(init == false)
+	{
+		set_physical_mem();
+		init = true;
+	}
+	int pages = n/(PAGE_SIZE);
+	int rest = n%(PAGE_SIZE);
+	if(rest>0)
+	{
+		pages++;
+	}
+	//We need to store the physical pages that can be allocated
+	int physical_memory_pages[pages];
+	int count = 0;
+	int i=0;
+
+	//finding free pages
+	while(count<pages && i<physical_page_num)
+	{
+		int bit = get_bit(physical,i);
+		if(bit ==0)
+		{
+			physical_memory_pages[count] = i;
+			count++;
+		}
+		i++;
+	}
+	//reach here if we didn't find required physical pages required
+	if(count<pages)
+	{
+		//pthread_mutex_unlock(&mutex);
+		return NULL;
+	}
+
+	//Need to find corresponding page in virtual memory
+	int start = available(pages);
+
+	//reach here if failed
+	if(start == -1)
+	{
+		//pthread_mutex_unlock(&mutex);
+		return NULL;
+	}
+	int end = start + pages -1;
+	count = 0;
+	for (int i= start;i<=end;i++)
+	{
+		unsigned long v_tem = i << offset_size;
+		unsigned long p_temp = physical_memory_pages[count] << offset_size;
+		set_bit(virtual_m,i);
+		set_bit(physical,physical_memory_pages[count]);
+		count ++;
+		page_map((unsigned int)v_temp);
+
+		//virtual address
+		unsigned long virtual_address = start << offset_size;
+		//pthread_mutex_unlock(&mutex);
+		return;
+	}
 }
 
 int t_free(unsigned int vp, size_t n){
     //TODO: Finish
+	//pthread_mutex_lock(&mutex);
+	int pages = n/(PAGE_SIZE);
+	int rest = n % (PAGE_SIZE);
+
+	if(rest>0)
+	{
+		pages++;
+	}
+
+	boolean is_valid = true;
+
+	unsigned long start = vp >> offset_size;
+	for(int i=start;i<(start+pages);i++)
+	{
+		int b = get_bit(virtual_m,i);
+		if(b==0)
+		{
+			is_valid = false;
+			break;
+		}
+	}
+
+	if(is_valid == false)
+	{
+		return;
+	}
+	for(int i=start;i<(start+pages);i++)
+	{
+		void * v_add = (void*)(start << offset_size);
+		unsigned long p_add = (unsigned long)(traslate(v_add));
+		unsigned long physical_page = (p_add >> offset_size);
+		reset_bit(virtual_m,i);
+		reset_bit(physical,physical_page);
+	}
+	for(int i=start;i<(start+pages);i++)
+	{
+		int idx = i % TLB_ENTRIES;
+		if(tlb_store.arr[index][0] == i)
+		{
+			tlb_store.arr[index][0] = -1;
+			tlb_store.arr[index][1] = -1;
+		} 
+	}
+
 }
 
 int put_value(unsigned int vp, void *val, size_t n){
     //TODO: Finish
+	char *value = (char*) val;
+	unsigned long phys_ad = (unsigned long)(translate(vp));
+	char *pa = (char *)phys_ad;
+	char *va = (char *)vp;
+	char *lva = va + n;
+	unsigned int f_vpn = (unsigned int)va >> offset_size;
+	unsigned int l_vpn = (unsigned int)lva >> offset_size;
+
+	for(int i = f_vpn;i<=l_vpn;i++)
+	{
+		int b = get_bit(virtual_m,i);
+		if(b ==0)
+		{
+			return;
+		}
+	}
+
+	int t = 0;
+	while(t<n)
+	{
+		*pa = *value;
+		pa++;
+		va++;
+		value++;
+		t++;
+
+		int ob_mask = (1 << offset_size);
+		ob_mask-=1;
+		int o = (unsigned int)va & ob_mask;
+
+		if(o ==0)
+		{
+			phys_ad = (unsigned long)(translate(va));
+			pa = (char *)phys_ad;
+		}
+	}
 }
 
 int get_value(unsigned int vp, void *dst, size_t n){
     //TODO: Finish
+	char *value = (char*) dst;
+	unsigned long phys_ad = (unsigned long)(translate(vp));
+	char *pa = (char *)phys_ad;
+	char *va = (char *)vp;
+	char *lva = va + n;
+	unsigned int f_vpn = (unsigned int)va >> offset_size;
+	unsigned int l_vpn = (unsigned int)lva >> offset_size;
+
+	for(int i = f_vpn;i<=l_vpn;i++)
+	{
+		int b = get_bit(virtual_m,i);
+		if(b ==0)
+		{
+			return;
+		}
+	}
+
+	
+	for(int i=0;i<n;i++)
+	{
+		*value = phys_ad;
+		pa++;
+		va++;
+		value++;
+		
+
+		int ob_mask = (1 << offset_size);
+		ob_mask-=1;
+		int o = (unsigned int)va & ob_mask;
+
+		if(o ==0)
+		{
+			phys_ad = (unsigned long)(translate(va));
+		}
+	}
+
 }
 
 void mat_mult(unsigned int a, unsigned int b, unsigned int c, size_t l, size_t m, size_t n){
