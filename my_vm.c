@@ -3,6 +3,7 @@
 //TODO: Define static variables and structs, include headers, etc.
 
 #define PAGE_SIZE 8192
+#define array_size (PAGE_SIZE/sizeof(unsigned long))
 struct page *physical_mem;
 char *physical;
 char *virtual_m;
@@ -12,6 +13,7 @@ int number_of_p = sizeof(physical)/sizeof(physical[0]);
 int number_of_v = sizeof(virtual_m)/sizeof(virtual_m[0]);
 typedef unsigned long page_table_entry;
 typedef unsigned long page_directory_entry;
+bool initial = false;
 //pthread_mutex_t mutex;
 struct tlb t1;
 
@@ -22,6 +24,9 @@ int vpn = 0;
 int inner_bits = NULL; // fill this in later
 int outer_bits = 0;
 unsigned long* page_directory = NULL;
+struct page{
+	unsigned long arr[array_size];
+};
 
 struct tlb {
 	unsigned long arr[TLB_ENTRIES][2];
@@ -59,7 +64,7 @@ void * translate(unsigned int vp){
 	int tlb_page_number = check_TLB(vp);
 	// if the page number = -1, then it doesn't exist in the TLB
 	if (tlb_page_number != -1) {
-		char* data = (char *)&physical_mem[tlb_page_number];
+		char *data = (char *)&physical_mem[tlb_page_number];
 		data += offset;
 		return data;
 	}
@@ -106,10 +111,10 @@ unsigned int page_map(unsigned int vp){
 void * t_malloc(size_t n){
     //TODO: Finish
 	//pthread_mutex_lock(&mutex);
-	if(init == false)
+	if(initial == false)
 	{
 		set_physical_mem();
-		init = true;
+		initial = true;
 	}
 	int pages = n/(PAGE_SIZE);
 	int rest = n%(PAGE_SIZE);
@@ -369,7 +374,7 @@ unsigned long available(int pages) {
             int c = 1;
             int j = i + 1;
 
-            while(j < virtual_page_num && c < pages)
+            while(j < virtual_page_number && c < pages)
             {
                 bit = get_bit(virtual_m, j);
                 if(bit == 1)
