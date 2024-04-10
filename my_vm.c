@@ -9,6 +9,7 @@ char *physical;
 char *virtual_m;
 const unsigned long long physical_page_number = (MEMSIZE)/(PAGE_SIZE);
 const unsigned long long virtual_page_number = (MAX_MEMSIZE)/(PAGE_SIZE);
+unsigned int page_directory = NULL;
 int number_of_p = sizeof(physical)/sizeof(physical[0]);
 int number_of_v = sizeof(virtual_m)/sizeof(virtual_m[0]);
 typedef unsigned long page_table_entry;
@@ -61,9 +62,11 @@ void set_physical_mem() {
 		l[i]=-1;
 	}
 
+	page_directory = (unsigned int)(physical_mem + physical_page_number - 1);
+
 }
 
-void * translate(unsigned int page_directory, unsigned int vp){
+void * translate(unsigned int vp){
     //TODO: Finish
 	unsigned long off_mask = (1 << offset_size);
 	off_mask -= 1;
@@ -279,7 +282,7 @@ int t_free(unsigned int vp, size_t n){
 int put_value(unsigned int vp, void *val, size_t n){
     //TODO: Finish
 	char *value = (char*) val;
-	unsigned long phys_ad = (unsigned long)(translate((unsigned int)(physical_mem + physical_page_number - 1), vp));
+	unsigned long phys_ad = (unsigned long)(translate(vp));
 	char *pa = (char *)phys_ad;
 	char *va = (char *)vp;
 	char *lva = va + n;
@@ -310,7 +313,7 @@ int put_value(unsigned int vp, void *val, size_t n){
 
 		if(o ==0)
 		{
-			phys_ad = (unsigned long)(translate((unsigned int)(physical_mem + physical_page_number - 1), vp));
+			phys_ad = (unsigned long)(translate(vp));
 			pa = (char *)phys_ad;
 		}
 	}
@@ -319,7 +322,7 @@ int put_value(unsigned int vp, void *val, size_t n){
 int get_value(unsigned int vp, void *dst, size_t n){
     //TODO: Finish
 	char *value = (char*) dst;
-	unsigned long phys_ad = (unsigned long)(translate((unsigned int)(physical_mem + physical_page_number - 1), vp));
+	unsigned long phys_ad = (unsigned long)(translate(vp));
 	char *pa = (char *)phys_ad;
 	char *va = (char *)vp;
 	char *lva = va + n;
@@ -350,7 +353,7 @@ int get_value(unsigned int vp, void *dst, size_t n){
 
 		if(o ==0)
 		{
-			phys_ad = (unsigned long)(translate((unsigned int)(physical_mem + physical_page_number - 1), va));
+			phys_ad = (unsigned long)(translate(va));
 		}
 	}
 
@@ -358,6 +361,7 @@ int get_value(unsigned int vp, void *dst, size_t n){
 
 void mat_mult(unsigned int a, unsigned int b, unsigned int c, size_t l, size_t m, size_t n){
     //TODO: Finish
+
 }
 
 void add_TLB(unsigned int vpage, unsigned int ppage){
