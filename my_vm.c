@@ -12,9 +12,29 @@ int number_of_p = sizeof(physical)/sizeof(physical[0]);
 int number_of_v = sizeof(virtual_m)/sizeof(virtual_m[0]);
 typedef unsigned long page_table_entry;
 typedef unsigned long page_directory_entry;
+//pthread_mutex_t mutex;
+struct tlb t1;
+
+int tlb_lookups = 0;
+int offset_size = 0;
+int tlb_miss = 0;
+int vpn = 0;
+int inner_bits = NULL; // fill this in later
+int outer_bits = 0;
+unsigned long* page_directory = NULL;
+
+struct tlb {
+	unsigned long arr[TLB_ENTRIES][2];
+};
+
 
 void set_physical_mem() {
     //TODO: Finish
+	 offset_size = log2(PAGE_SIZE);
+	 vpn = 32 - offset_size;
+	 inner_bits = NULL; // fill this in later
+	 outer_bits = vpn - inner_bits;
+	 
 	physical_mem = (struct page *)malloc(MEMSIZE);
     physical = (char *)malloc(physical_page_number/8);
     virtual_m = (char *)malloc(virtual_page_number/8);
@@ -103,7 +123,7 @@ void * t_malloc(size_t n){
 	int i=0;
 
 	//finding free pages
-	while(count<pages && i<physical_page_num)
+	while(count<pages && i<physical_page_number)
 	{
 		int bit = get_bit(physical,i);
 		if(bit ==0)
@@ -133,7 +153,7 @@ void * t_malloc(size_t n){
 	count = 0;
 	for (int i= start;i<=end;i++)
 	{
-		unsigned long v_tem = i << offset_size;
+		unsigned long v_temp = i << offset_size;
 		unsigned long p_temp = physical_memory_pages[count] << offset_size;
 		set_bit(virtual_m,i);
 		set_bit(physical,physical_memory_pages[count]);
@@ -158,7 +178,7 @@ int t_free(unsigned int vp, size_t n){
 		pages++;
 	}
 
-	boolean is_valid = true;
+	bool is_valid = true;
 
 	unsigned long start = vp >> offset_size;
 	for(int i=start;i<(start+pages);i++)
@@ -186,10 +206,10 @@ int t_free(unsigned int vp, size_t n){
 	for(int i=start;i<(start+pages);i++)
 	{
 		int idx = i % TLB_ENTRIES;
-		if(tlb_store.arr[index][0] == i)
+		if(t1.arr[idx][0] == i)
 		{
-			tlb_store.arr[index][0] = -1;
-			tlb_store.arr[index][1] = -1;
+			t1.arr[idx][0] = -1;
+			t1.arr[idx][1] = -1;
 		} 
 	}
 
@@ -281,12 +301,96 @@ void mat_mult(unsigned int a, unsigned int b, unsigned int c, size_t l, size_t m
 
 void add_TLB(unsigned int vpage, unsigned int ppage){
     //TODO: Finish
+	int idx = vpage % TLB_ENTRIES;
+	t1.arr[idx][0] = vpage;
+	t1.arr[idx][1] = ppage;
 }
 
 int check_TLB(unsigned int vpage){
     //TODO: Finish
+	int idx = vpage % TLB_ENTRIES;
+	if(t1.arr[idx][0] == vpage)
+	{
+		unsigned long ppage = t1.arr[idx][1];
+		return ppage;
+	}
+	else
+	{
+		return -1;
+	}
 }
 
 void print_TLB_missrate(){
     //TODO: Finish
+	double rate = 0;
+	rate = (tlb_miss) / (tlb_lookups);
+	printf("TLB Miss Rate : %f \n", rate);
+}
+
+static void set_bitchar (void *bitmap, int idx)
+{
+    // Calculate the starting location where index is present
+    char *location = ((char *) bitmap) + (idx / 8);
+    char bit = 1 << (idx % 8);
+    *location |= bit;
+   
+    return;
+}
+
+static int get_bit(char *bitmap, int idx)
+{
+    char *location = ((char *) bitmap) + (idx / 8);
+    int bit = (int)(*location >> (idx % 8)) & 0x1;
+    
+    return bit;
+}
+
+static void reset_bit(char *bitmap, int idx)
+{
+    char *location = ((char *) bitmap) + (idx / 8);
+    char bit = 1 << (idx % 8);
+    *location &= ~bit;
+   
+    return;
+}
+
+unsigned long available(int pages) {
+ 
+    //Use virtual address bitmap to find the next free page
+
+    int start = 0;
+    int i = 0;
+
+    while(i < virtual_page_number)
+    {
+        int bit = get_bit(virtual_m, i);
+        if(bit == 0)
+        {
+            int c = 1;
+            int j = i + 1;
+
+            while(j < virtual_page_num && c < pages)
+            {
+                bit = get_bit(virtual_m, j);
+                if(bit == 1)
+                {
+                    break;
+                }
+                else
+                {
+                    c++;
+                    j++;
+                }
+            }
+            if(c == pages)
+            {
+                start = i;
+                return start;
+            }
+            i = j;
+            continue;
+        }
+        i++;
+    }
+    return -1;
 }

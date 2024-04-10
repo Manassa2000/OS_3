@@ -1,18 +1,11 @@
 #include <stddef.h>
 #include "math.h"
+#include "stdbool.h"
 
 #define MAX_MEMSIZE (1UL<<32)
 #define MEMSIZE (1UL<<30)
 #define TLB_ENTRIES 256
 #define PAGE_SIZE 8192
-
-int tlb_lookups = 0;
-int offset_size = log2(PAGE_SIZE);
-int tlb_miss = 0;
-int vpn = 32 - offset_size;
-int inner_bits = NULL; // fill this in later
-int outer_bits = vpn - inner_bits;
-unsigned long* page_directory = NULL;
 
 void set_physical_mem();
 
