@@ -10,6 +10,8 @@ typedef struct PageTable {
 
 typedef struct GlobalState {
 	char* physical_mem;
+	unsigned int tlb_lookups;
+	unsigned int tlb_misses;
 	PageTable* table;
 	int divisions[NUM_LEVELS + 1]; // one for the offset as well
 } GlobalState;
@@ -61,6 +63,9 @@ void set_physical_mem(){
 			s.table[i].there = 0;
 			s.table[i].mem = NULL;
 		}
+
+		s.tlb_lookups = 0;
+		s.tlb_misses = 0;
 	}
 
 	if (!s.physical_mem)
@@ -72,6 +77,13 @@ void set_physical_mem(){
 
 void * translate(unsigned int vp){
     pthread_mutex_lock(&safety_lock);
+
+	// just check the TLB first
+
+	int addy = check_TLB(vp);
+	if (addy != -1)
+		return addy;
+	
 	unsigned int virtual_addy = vp; // just in case i mess anything up
 	int bits_at_division[NUM_LEVELS + 1];
 	int off = 0;
