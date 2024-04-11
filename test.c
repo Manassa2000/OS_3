@@ -4,7 +4,7 @@
 #include "my_vm.h"
 
 int main() {
-	printf("calling function\n");
-	set_physical_mem();
+	int a = 1UL << 10;
+	printf("%d\n", a);
 	return 0;
 }

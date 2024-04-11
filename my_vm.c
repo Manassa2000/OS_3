@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "my_vm.h"
 
-#define NUM_LEVELS 4
+#define NUM_LEVELS 2
 typedef struct PageTable {
 	int level;
 	int there;
@@ -79,11 +79,13 @@ void * translate(unsigned int vp){
     pthread_mutex_lock(&safety_lock);
 
 	// just check the TLB first
-
+	++s.tlb_lookups;
 	int addy = check_TLB(vp);
 	if (addy != -1)
 		return addy;
 	
+	// if we're here, then the page requested isn't there in the tlb
+	++s.tlb_misses;
 	unsigned int virtual_addy = vp; // just in case i mess anything up
 	int bits_at_division[NUM_LEVELS + 1];
 	int off = 0;
@@ -93,14 +95,28 @@ void * translate(unsigned int vp){
 		off += s.divisions[i];
 	}
 
-	
+	PageTable* curr_table = s.table[bits_at_division[0]].mem;
+	// now that we have all the bit values in bits_at_division, just keep going to the last level
+	for (int i = 1; i <= NUM_LEVELS; ++i) {
+		if (!curr_table[bits_at_division[i]].there)
+			return NULL;
 
+		curr_table = curr_table[bits_at_division[i]].mem;
+	}
+
+	unsigned int return_addy = (unsigned int)(curr_table) + (vp & ((1UL << s.divisions[NUM_LEVELS]) - 1));
+	add_TLB(vp, return_addy);
 
 	pthread_mutex_unlock(&safety_lock);
+	return return_addy;
 }
 
 unsigned int page_map(unsigned int vp){
-    //TODO: Finish
+	pthread_mutex_lock(&safety_lock);
+	
+
+	pthread_mutex_unlock(&safety_lock);
+
 }
 
 void * t_malloc(size_t n){
