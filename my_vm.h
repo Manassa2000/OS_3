@@ -1,9 +1,10 @@
 #include <stddef.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include "math.h"
 #include "stdbool.h"
 
-#define MAX_MEMSIZE (1UL<<31)
+#define MAX_MEMSIZE (1UL<<32)
 #define MEMSIZE (1UL<<30)
 #define TLB_ENTRIES 256
 #define PAGE_SIZE 8192
@@ -18,9 +19,9 @@ static void reset_bit(char *bitmap, int idx);
 
 unsigned long get_next_avail(int pages);
 
-unsigned long * translate(unsigned int vp);
+void * translate(unsigned int vp);
 
-unsigned int page_map(unsigned int vp, unsigned int pa);
+unsigned int page_map(unsigned int vp);
 
 void * t_malloc(size_t n);
 
