@@ -4,6 +4,7 @@
 #define NUM_LEVELS 4
 typedef struct PageTable {
 	int level;
+	int there;
 	char* mem;
 } PageTable;
 
@@ -13,12 +14,19 @@ typedef struct GlobalState {
 	int divisions[NUM_LEVELS + 1]; // one for the offset as well
 } GlobalState;
 
+typedef struct Node {
+	struct Node *next;
+	int mem_loc;
+	int pages;
+} Node;
+
 GlobalState s;
+Node *head = NULL;
+int list_size = 0;
 pthread_mutex_t safety_lock = PTHREAD_MUTEX_INITIALIZER;
 
 
 void set_physical_mem(){
-    //TODO: Finish
 	printf("LOCKING THE set_physical_mem() FUNCTION\n");
 	pthread_mutex_lock(&safety_lock);
 
@@ -45,8 +53,16 @@ void set_physical_mem(){
 
 
 	// allocate physical memory if not already allocated
-	if (!s.physical_mem)
+	if (!s.physical_mem) {
 		s.physical_mem = (char *)malloc(MEMSIZE);
+		s.table = malloc(sizeof(PageTable) * 1UL << s.divisions[0]);
+		for (int i = 0; i < (1UL << s.divisions[0]); ++i) {
+			s.table[i].level = 0;
+			s.table[i].there = 0;
+			s.table[i].mem = NULL;
+		}
+	}
+
 	if (!s.physical_mem)
 		printf("yeeaahh something went wrong in trying to allocate physical memory\n");
 
@@ -56,6 +72,7 @@ void set_physical_mem(){
 
 void * translate(unsigned int vp){
     //TODO: Finish
+	
 	
 }
 
