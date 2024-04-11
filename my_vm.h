@@ -1,17 +1,26 @@
 #include <stddef.h>
+#include <stdlib.h>
 #include "math.h"
 #include "stdbool.h"
 
-#define MAX_MEMSIZE (1UL<<32)
+#define MAX_MEMSIZE (1UL<<31)
 #define MEMSIZE (1UL<<30)
 #define TLB_ENTRIES 256
 #define PAGE_SIZE 8192
 
 void set_physical_mem();
 
-void * translate(unsigned int vp);
+static void set_bit (void *bitmap, int idx);
 
-unsigned int page_map(unsigned int vp);
+static int get_bit(char *bitmap, int idx);
+
+static void reset_bit(char *bitmap, int idx);
+
+unsigned long get_next_avail(int pages);
+
+unsigned long * translate(unsigned int vp);
+
+unsigned int page_map(unsigned int vp, unsigned int pa);
 
 void * t_malloc(size_t n);
 

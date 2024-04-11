@@ -1,5 +1,5 @@
 #include "my_vm.h"
-
+#include <stdio.h>
 //TODO: Define static variables and structs, include headers, etc.
 
 #define PAGE_SIZE 8192
@@ -9,7 +9,7 @@ char *physical;
 char *virtual_m;
 const unsigned long long physical_page_number = (MEMSIZE)/(PAGE_SIZE);
 const unsigned long long virtual_page_number = (MAX_MEMSIZE)/(PAGE_SIZE);
-unsigned int page_directory = NULL;
+unsigned long *page_directory = NULL;
 int number_of_p = sizeof(physical)/sizeof(physical[0]);
 int number_of_v = sizeof(virtual_m)/sizeof(virtual_m[0]);
 typedef unsigned long page_table_entry;
@@ -22,9 +22,9 @@ int tlb_lookups = 0;
 int offset_size = 0;
 int tlb_miss = 0;
 int vpn = 0;
-int inner_bits = NULL; // fill this in later
+int inner_bits = 0; // fill this in later
 int outer_bits = 0;
-unsigned long* page_directory = NULL;
+
 struct page{
 	unsigned long arr[array_size];
 };
@@ -38,7 +38,7 @@ void set_physical_mem() {
     //TODO: Finish
 	 offset_size = log2(PAGE_SIZE);
 	 vpn = 32 - offset_size;
-	 inner_bits = NULL; // fill this in later
+	 inner_bits = log2((PAGE_SIZE) / sizeof(unsigned int));
 	 outer_bits = vpn - inner_bits;
 	 
 	physical_mem = (struct page *)malloc(MEMSIZE);
@@ -62,11 +62,11 @@ void set_physical_mem() {
 		l[i]=-1;
 	}
 
-	page_directory = (unsigned int)(physical_mem + physical_page_number - 1);
+	*page_directory = (unsigned int)(physical_mem + physical_page_number - 1);
 
 }
 
-void * translate(unsigned int vp){
+unsigned long * translate(unsigned int vp){
     //TODO: Finish
 	unsigned long off_mask = (1 << offset_size);
 	off_mask -= 1;
@@ -78,7 +78,7 @@ void * translate(unsigned int vp){
 	if (tlb_page_number != -1) {
 		char *data = (char *)&physical_mem[tlb_page_number];
 		data += offset;
-		return data;
+		return (unsigned long *)data;
 	}
 
 	// we're here because the page isn't there in our TLB
@@ -109,10 +109,10 @@ void * translate(unsigned int vp){
 	unsigned long final_address = (unsigned long)((char *)pp_address + offset_size);
 	add_TLB(vpn, *pt_entry);
 
-	return;
+	return (unsigned long *)pp_address;
 }
 
-unsigned int page_map(unsigned int page_directory, unsigned int vp, unsigned int pa){
+unsigned int page_map(unsigned int vp, unsigned int pa){
     //TODO: Finish
 	unsigned long off_mask = (1 << offset_size);
 	off_mask -= 1;
@@ -138,7 +138,7 @@ unsigned int page_map(unsigned int page_directory, unsigned int vp, unsigned int
 	in_bit_msk -= 1;
 	unsigned long inner_idx = vpn & in_bit_msk;
 
-	unsigned int pd_entry = page_directory + outer_idx;
+	unsigned long pd_entry = page_directory + outer_idx;
 	if (pd_entry == -1)
 	{
 		int last_page = phy_page_num - 1;
@@ -157,7 +157,7 @@ unsigned int page_map(unsigned int page_directory, unsigned int vp, unsigned int
 	}
 
 	unsigned int inner_pt_add = (unsigned int)&physical_mem[pd_entry];
-	unsigned int *pt_entry = phy_page_num;
+	unsigned long *pt_entry = phy_page_num;
 
 	add_TLB(vpn, phy_page_num);
 	return 1;
@@ -222,7 +222,7 @@ void * t_malloc(size_t n){
 		set_bit(virtual_m,i);
 		set_bit(physical,physical_memory_pages[count]);
 		count ++;
-		page_map((unsigned int)(physical_mem + physical_page_number - 1), (unsigned int)v_temp, (unsigned int)p_temp);
+		page_map((unsigned int)v_temp, (unsigned int)p_temp);
 
 		//virtual address
 		unsigned long virtual_address = start << offset_size;
@@ -257,12 +257,12 @@ int t_free(unsigned int vp, size_t n){
 
 	if(is_valid == false)
 	{
-		return;
+		return -1;
 	}
-	for(int i=start;i<(start+pages);i++)
+	for(unsigned int i=start;i<(start+pages);i++)
 	{
-		void * v_add = (void*)(start << offset_size);
-		unsigned long p_add = (unsigned long)(traslate(v_add));
+		unsigned int v_add = (start << offset_size);
+		unsigned long p_add = (unsigned long)(translate(v_add));
 		unsigned long physical_page = (p_add >> offset_size);
 		reset_bit(virtual_m,i);
 		reset_bit(physical,physical_page);
@@ -277,6 +277,7 @@ int t_free(unsigned int vp, size_t n){
 		} 
 	}
 
+	return 0;
 }
 
 int put_value(unsigned int vp, void *val, size_t n){
@@ -294,7 +295,7 @@ int put_value(unsigned int vp, void *val, size_t n){
 		int b = get_bit(virtual_m,i);
 		if(b ==0)
 		{
-			return;
+			return -1;
 		}
 	}
 
@@ -317,6 +318,8 @@ int put_value(unsigned int vp, void *val, size_t n){
 			pa = (char *)phys_ad;
 		}
 	}
+
+	return 0;
 }
 
 int get_value(unsigned int vp, void *dst, size_t n){
@@ -324,7 +327,7 @@ int get_value(unsigned int vp, void *dst, size_t n){
 	char *value = (char*) dst;
 	unsigned long phys_ad = (unsigned long)(translate(vp));
 	char *pa = (char *)phys_ad;
-	char *va = (char *)vp;
+	unsigned int va = vp;
 	char *lva = va + n;
 	unsigned int f_vpn = (unsigned int)va >> offset_size;
 	unsigned int l_vpn = (unsigned int)lva >> offset_size;
@@ -334,7 +337,7 @@ int get_value(unsigned int vp, void *dst, size_t n){
 		int b = get_bit(virtual_m,i);
 		if(b ==0)
 		{
-			return;
+			return -1;
 		}
 	}
 
@@ -357,6 +360,7 @@ int get_value(unsigned int vp, void *dst, size_t n){
 		}
 	}
 
+	return 0;
 }
 
 void mat_mult(unsigned int a, unsigned int b, unsigned int c, size_t l, size_t m, size_t n){
