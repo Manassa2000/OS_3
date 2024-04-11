@@ -71,9 +71,20 @@ void set_physical_mem(){
 }
 
 void * translate(unsigned int vp){
-    //TODO: Finish
+    pthread_mutex_lock(&safety_lock);
+	unsigned int virtual_addy = vp; // just in case i mess anything up
+	int bits_at_division[NUM_LEVELS + 1];
+	int off = 0;
+
+	for (int i = NUM_LEVELS; i >= 0; --i) {
+		bits_at_division[i] = (vp >> off) & ((1UL << s.divisions[i]) - 1);
+		off += s.divisions[i];
+	}
+
 	
-	
+
+
+	pthread_mutex_unlock(&safety_lock);
 }
 
 unsigned int page_map(unsigned int vp){
