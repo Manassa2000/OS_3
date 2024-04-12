@@ -46,8 +46,8 @@ typedef struct AllocatedListNode{
 } AllocatedListNode;
 
 typedef struct TLBEntry{
-	void* vpage;
-	void* ppage;
+	char* vpage;
+	char* ppage;
 	int p;
 } TLBEntry;
 typedef size_t TLB_Index;
@@ -58,6 +58,8 @@ unsigned long TLB_misses = 0;
 State state = {0, NULL, NULL, {0, 0, 0}};
 pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER; // Mutex to make the code threadsafe
 AllocatedListNode* head = NULL;
+
+void remove_TLB(unsigned long vpage);
 
 void set_bit_at_index(char *bitmap, long index)
 {
@@ -145,6 +147,7 @@ void set_physical_mem(){
 		memset(state.v_bitmap, 0, MAX_MEMSIZE/8/PAGE_SIZE);
 		memset(state.p_bitmap, 0xff, RESERVED_MEM/8);
 		memset(state.v_bitmap, 0xff, RESERVED_MEM/8);
+		memset(TLB, 0x00, TLB_ENTRIES*sizeof(TLBEntry));
 		// If the memory part is uninitialized, initialize it
 		state.pmem = malloc(MEMSIZE);
 		if(!state.pmem){
@@ -214,6 +217,12 @@ void * translate(unsigned int vp){
 	// Split the bits of the virtual pointer
 	int split_bits[N_LEVELS + 1];
 	divide_bits(vp, split_bits);
+	TLB_accesses += 1;
+	int tlb_ret = check_TLB(vp/PAGE_SIZE);
+	if(tlb_ret != -1) {
+		return (unsigned long)(TLB[tlb_ret].ppage) * PAGE_SIZE + split_bits[N_LEVELS] + state.pmem;
+	}
+	TLB_misses += 1;
 	// Use the split bits to travel down the page table tree
 	PageTableEntry* curr_table = state.top_level_table[split_bits[0]].table;
 	for(int i = 1; i < N_LEVELS - 1; i++) {
@@ -226,6 +235,7 @@ void * translate(unsigned int vp){
 	if(!mem){
 		FATAL("Should not happen!");
 	}
+	add_TLB((unsigned long)vp/PAGE_SIZE, (unsigned long)(mem - state.pmem)/PAGE_SIZE);
 	return mem + split_bits[N_LEVELS];
 }
 
@@ -252,6 +262,13 @@ unsigned int page_map(unsigned int vp){
 	// Split the bits of the virutal pointer
 	int split_bits[N_LEVELS + 1];
 	divide_bits(vp, split_bits);
+	TLB_accesses += 1;
+	int tlb_ret = check_TLB(vp/PAGE_SIZE);
+	if(tlb_ret != -1) {
+		//return (unsigned long)(TLB[tlb_ret].ppage) * PAGE_SIZE + split_bits[N_LEVELS] + state.pmem;
+		return 0;
+	}
+	TLB_misses += 1;
 	if(!get_bit_at_index(state.v_bitmap, vp/PAGE_SIZE)){
 		long first_free = find_first_free_ppage();
 		if(first_free == -1) {
@@ -327,6 +344,7 @@ int t_free_one_page(unsigned int vp) {
 	}
 	clear_bit_at_index(state.p_bitmap, (long)( (char*)phy_addr - state.pmem)/PAGE_SIZE);
 	clear_table(vp);
+	remove_TLB(vp/PAGE_SIZE);
 	return 1;
 }
 
@@ -370,29 +388,32 @@ void mat_mult(unsigned int a, unsigned int b, unsigned int c, size_t l, size_t m
     //TODO: Finish
 	// Assuming that a and b are the input matrices, c is the output matrix, l is the size of each elemnt, m and n are
 	// the dimensions of the matrices
+	// Assuming the type of a, b and c is int8_t
 	pthread_mutex_lock(&global_lock);
-	//for(long j = 0; j < m; j++) {
-	//	for(long i = 0; i < n; i++) {
-	//		for(long k = 0; k < 
-	//	}
-	//}
+	for(long j = 0; j < l; j++) {
+		for(long i = 0; i < n; i++) {
+			for(long k = 0; k < m; k++) {
+				char* a_jk = a + j*m + k;
+				char* b_ki = a + k*n + i;
+				char* c_ji = a + j*n + i;
+				*c_ji = (*a_jk) * (*b_ki);
+			}
+		}
+	}
 	pthread_mutex_unlock(&global_lock);
 }
 
-void add_TLB(unsigned int vpage, unsigned int ppage){
+void add_TLB(unsigned int vpage, unsigned long ppage){
+	//DEBUG_PRINT("ADD TLB INVOKED!");
     //TODO: Finish
 	// If we are at the end of the TLB,
 	// we rollover
 	// Since this is an internal function,
 	// it cannot be used in a threadsafe manner
 	// outside of the API. 
-	int i = 0;
-	int found_tran = 0;
-	for(i = 0; i < TLB_ENTRIES; i++) {
-		if(TLB[i].vpage == vpage)
-			found_tran = 1;
-	}
-	if(!found_tran){
+	int found_tran = check_TLB(vpage);
+	if(found_tran == -1){
+		//DEBUG_PRINT("ADD TLB Addition");
 		if(tlb_put_index == TLB_ENTRIES) {
 			tlb_put_index = 0;
 		}
@@ -402,20 +423,32 @@ void add_TLB(unsigned int vpage, unsigned int ppage){
 		TLB[tlb_put_index].p = 1;
 		tlb_put_index++;
 	} else {
-		TLB[i].ppage = ppage;
+		//DEBUG_PRINT("ADD TLB Replacement!");
+		TLB[found_tran].ppage = ppage;
 	}
 }
 
 int check_TLB(unsigned int vpage){
     //TODO: Finish
+	//DEBUG_PRINT("CHECK TLB INVOKED!");
 	for(int i = 0; i < TLB_ENTRIES; i++) {
-		if(TLB[i].vpage == vpage) {
-			return 1;
+		if(( TLB[i].vpage == vpage ) && (TLB[i].p)) {
+			DEBUG_PRINT("TLB Hit!");
+			return i;
 		}
 	}
-	return 0;
+	//DEBUG_PRINT("TLB Miss!");
+	return -1;
+}
+
+void remove_TLB(unsigned long vpage){
+	for(int i = 0; i < TLB_ENTRIES; i++) {
+		if((TLB[i].vpage == vpage) && (TLB[i].p))
+			TLB[i].p = 0;
+	}
 }
 
 void print_TLB_missrate(){
     //TODO: Finish
+	printf("TLB Miss Rate: %f%%\n", (float)TLB_misses/(float)TLB_accesses * 100);
 }

@@ -12,9 +12,13 @@
 
 void set_physical_mem();
 
-static void set_bit (void *bitmap, int idx);
+void set_bit(char *map, unsigned long idx);
 
-static int get_bit(char *bitmap, int idx);
+int get_bit(char *map, unsigned long idx);
+
+void clear_bit(char *map, unsigned long idx);
+
+void remove_TLB(unsigned long vpage);
 
 static void reset_bit(char *bitmap, int idx);
 
@@ -34,7 +38,7 @@ int get_value(unsigned int vp, void *dst, size_t n);
 
 void mat_mult(unsigned int a, unsigned int b, unsigned int c, size_t l, size_t m, size_t n);
 
-void add_TLB(unsigned int vpage, unsigned int ppage);
+void add_TLB(unsigned int vpage, unsigned long ppage);
 
 int check_TLB(unsigned int vpage);
 
