@@ -1,0 +1,17 @@
+CC = gcc
+CFLAGS = -ggdb -Wall -Wextra -pedantic -std=gnu11 -pthread -fno-strict-aliasing
+LDFLAGS = -lm
+AR = ar -rc
+RANLIB = ranlib
+
+all: test.out
+
+my_vm.a: my_vm.o
+	$(AR) $@ $^
+	$(RANLIB) $@
+
+test.out: test.c my_vm.a
+	$(CC) $(CFLAGS) test.c my_vm.a -o $@
+
+clean:
+	rm -rf *.o *.a

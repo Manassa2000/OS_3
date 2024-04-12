@@ -41,6 +41,10 @@ void initialize_table(int level, PageTable** table) {
 		return;
 
 	*table = malloc(sizeof(PageTable) * (1UL << s.divisions[level]));
+	if(*table == NULL){
+		printf("Bruh\n");
+		exit(0);
+	}
 	memset(*table, 0, sizeof(PageTable) * (1UL << s.divisions[level]));
 	for (unsigned long long i = 0; i < (1UL << s.divisions[level]); ++i)
 		initialize_table(level + 1, &((*table)[i].table));
@@ -97,13 +101,10 @@ void set_physical_mem(){
 }
 
 void * translate(unsigned int vp){
-    pthread_mutex_lock(&safety_lock);
-
 	int isThere = get_bit(s.virtual_map, vp / PAGE_SIZE);
-	if (!isThere) {
-		printf("NO ENTRY PRESENT!");
+	if (!isThere)
 		exit(-1);
-	}
+	
 	unsigned int virtual_addy = vp; // just in case i mess anything up
 	int bits_at_division[NUM_LEVELS + 1];
 	int off = 0;
@@ -114,7 +115,7 @@ void * translate(unsigned int vp){
 	}
 
 	++s.tlb_lookups;
-	int addy = check_TLB(vp);
+	int addy = check_TLB(vp / PAGE_SIZE);
 	if (addy != -1)
 		return (unsigned long) (look_buffer.buffer[addy][1]) * PAGE_SIZE + bits_at_division[NUM_LEVELS] + s.physical_mem;
 	
@@ -123,7 +124,7 @@ void * translate(unsigned int vp){
 
 	PageTable* curr_table = s.table[bits_at_division[0]].table;
 	// now that we have all the bit values in bits_at_division, just keep going to the last level
-	for (int i = 1; i <= NUM_LEVELS; ++i) {
+	for (int i = 1; i < NUM_LEVELS - 1; ++i) {
 		if (!curr_table)
 			return NULL;
 
@@ -135,19 +136,17 @@ void * translate(unsigned int vp){
 	// unsigned int return_addy = (unsigned int)(curr_table) + (vp & ((1UL << s.divisions[NUM_LEVELS]) - 1));
 	char* return_addy = memory + bits_at_division[NUM_LEVELS]; // add the page offset
 	add_TLB((unsigned long) vp / PAGE_SIZE, (unsigned long) (memory - s.physical_mem) / PAGE_SIZE);
-
-	pthread_mutex_unlock(&safety_lock);
 	return return_addy;
 }
 
-long find_free_virtual() {
+unsigned long find_free_virtual() {
 	for (unsigned long i = 0; i < MAX_MEMSIZE / PAGE_SIZE; ++i) {
 		if (!get_bit(s.virtual_map, i))
 			return i;
 	}
 }
 
-long find_free_phy() {
+unsigned long find_free_phy() {
 	for (unsigned long i = 0; i < MEMSIZE / PAGE_SIZE; ++i) {
 		if (!get_bit(s.physical_map, i))
 			return i;
@@ -157,10 +156,9 @@ long find_free_phy() {
 }
 
 unsigned int page_map(unsigned int vp){
-	pthread_mutex_lock(&safety_lock);
 	// check the tlb to see if it there already
 	++s.tlb_lookups;
-	int addy = check_TLB(vp);
+	int addy = check_TLB(vp / PAGE_SIZE);
 	if (addy != -1)
 		return 0; // success
 	
@@ -192,14 +190,11 @@ unsigned int page_map(unsigned int vp){
 
 		curr_table[bits_at_division[NUM_LEVELS - 1]].mem = s.physical_mem + i * PAGE_SIZE;
 		set_bit(s.virtual_map, vp / PAGE_SIZE);
-		set_bit(s.physical_map, i / PAGE_SIZE);
+		set_bit(s.physical_map, i);
 
-		pthread_mutex_unlock(&safety_lock);
 		return 0;
 	}
 
-
-	pthread_mutex_unlock(&safety_lock);
 	return 1; // not success
 }
 
@@ -208,8 +203,6 @@ void set_bit(char* map, unsigned long idx) {
 		exit -1;
 	}
 
-	pthread_mutex_lock(&safety_lock);
-
 	int map_idx = idx / 8;
 	if (map_idx < 0) {
 		printf("Negative map index!\n");
@@ -217,8 +210,6 @@ void set_bit(char* map, unsigned long idx) {
 	}
 
 	map[map_idx] = map[map_idx] | (1 << (idx % 8));
-
-	pthread_mutex_unlock(&safety_lock);
 	return;
 }
 
@@ -227,8 +218,6 @@ void clear_bit(char *map, unsigned long idx) {
 		exit -1;
 	}
 
-	pthread_mutex_lock(&safety_lock);
-
 	int map_idx = idx / 8;
 	if (map_idx < 0) {
 		printf("Negative map index!\n");
@@ -236,8 +225,6 @@ void clear_bit(char *map, unsigned long idx) {
 	}
 
 	map[map_idx] &= ~(1 << (idx % 8));
-
-	pthread_mutex_unlock(&safety_lock);
 	return;
 }
 
@@ -278,7 +265,10 @@ void * t_malloc(size_t n){
 	return return_val;
 }
 
-PageTable* travel_through_tree(unsigned long vp) {
+void remove_from_table(unsigned long vp) {
+	if (!get_bit(s.virtual_map, vp / PAGE_SIZE))
+		exit(1);
+
 	int bits_at_division[NUM_LEVELS + 1];
 	int off = 0;
 
@@ -296,37 +286,30 @@ PageTable* travel_through_tree(unsigned long vp) {
 
 		curr_table = curr_table[bits_at_division[i]].table;
 	}
-
-	return &curr_table[bits_at_division[NUM_LEVELS - 1]];
-}
-
-void remove_from_table(unsigned long vp) {
-	if (!get_bit(s.virtual_map, vp / PAGE_SIZE))
-		exit(1);
 	
-	PageTable* last = travel_through_tree(vp);
+	PageTable* last = &curr_table[bits_at_division[NUM_LEVELS - 1]];
 	last->mem = NULL;
 	clear_bit(s.virtual_map, vp / PAGE_SIZE);
 }
 
 int free_one(unsigned long vp) {
 	void* physical_addy = translate(vp);
-	if (!get_bit(s.physical_map, (unsigned long)((char *)physical_addy - s.physical_map) / PAGE_SIZE)) {
+ 	if (!get_bit(s.physical_map, (unsigned long)((char *)physical_addy - s.physical_mem) / PAGE_SIZE)) {
 		printf("this isn't suppored to happen... trying to free one page\n");
 		exit(1);
 	}
 
-	clear_bit(s.physical_map, (unsigned long) ((char *)physical_addy - s.physical_map) / PAGE_SIZE);
+	clear_bit(s.physical_map, (unsigned long) ((char *)physical_addy - s.physical_mem) / PAGE_SIZE);
 	remove_from_table(vp);
 }
 
 int t_free(unsigned int vp, size_t n){
+	pthread_mutex_lock(&safety_lock);
 	long num_pages = n / PAGE_SIZE;
 	if (n % PAGE_SIZE)
 		++num_pages;
 	
 	int return_val = 1;
-	pthread_mutex_lock(&safety_lock);
 	for (unsigned long i = 0; i < num_pages; ++i) {
 		return_val = return_val & free_one(vp + i * PAGE_SIZE);
 	}
@@ -356,26 +339,35 @@ int get_value(unsigned int vp, void *dst, size_t n){
 }
 
 void mat_mult(unsigned int a, unsigned int b, unsigned int c, size_t l, size_t m, size_t n){
-    pthread_mutex_lock(&safety_lock);
+    
+	// let's get the whole array first
+	char *array_one = malloc(l * m); // since it's l x m
+	get_value(a, array_one, l * m);
+
+	// now get the second array
+	char *array_two = malloc(m * n);
+	get_value(b, array_two, m * n);
+
+	// answer array
+	char *answer_array = malloc(l * n);
+	memset(answer_array, 0, l * n); // reserve the space for it and set it to 0
+
 	for (unsigned long i = 0; i < l; ++i) {
 		for (unsigned long j = 0; j < n; ++j) {
-			for (unsigned long k = 0; k < m; ++k) {
-				char *one = a + (i * m) + k;
-				char *two = b + (k * n) + j;
-				char *three = c + (i * n) + j;
-				*three = (*one) * (*two);
-			}
+			char mult_val = 0;
+			
+			for (unsigned long k = 0; k < m; ++k)
+				mult_val += array_one[k + i * m] * array_two[k * n + i];
+		
+			answer_array[j * n * i] = mult_val;
 		}
 	}
-	
-	pthread_mutex_unlock(&safety_lock);
+
+	// we have all the answers in our ans_arr, put it all in the correct location now
+	put_value(c, answer_array, l * n);
 }
 
 void add_TLB(unsigned int vpage, unsigned long ppage){
-	int check = check_TLB(vpage);
-	if (check == 1)
-		return;
-	
 	if (tlb_idx == TLB_ENTRIES)
 		tlb_idx = 0;
 		
@@ -387,9 +379,8 @@ void add_TLB(unsigned int vpage, unsigned long ppage){
 
 int check_TLB(unsigned int vpage){
 	for (int i = 0; i < TLB_ENTRIES; ++i) {
-		if ((look_buffer.buffer[i][0] == vpage) && (look_buffer.buffer[i][2])) {
+		if ((look_buffer.buffer[i][0] == vpage) && (look_buffer.buffer[i][2])) 
 			return i;
-		}
 	}
 	
 	return -1;
